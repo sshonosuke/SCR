@@ -1,0 +1,2 @@
+# SCR
+Spatially Clustered Regression
