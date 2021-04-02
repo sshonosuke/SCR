@@ -1,6 +1,6 @@
 This repository provides R code implementing spatially clustered regression for spatial data analysis, as proposed by the following paper.
 
-[Sugasawa, S. and Murakami, D. (2020). Spatially Clustered Regression. arXiv:2011.01493.](https://arxiv.org/abs/2011.01493)
+[Sugasawa, S. and Murakami, D. (2020). Spatially Clustered Regression. *arXiv:2011.01493*](https://arxiv.org/abs/2011.01493)
 
 The repository includes the following 5 files.
 
