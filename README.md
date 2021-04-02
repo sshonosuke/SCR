@@ -1,4 +1,4 @@
-## SCR: Spatially Clustered Regression
+# SCR: Spatially Clustered Regression
 
 This repository provides R code implementing spatially clustered regression for spatial data analysis, as proposed by the following paper.
 
