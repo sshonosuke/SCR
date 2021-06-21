@@ -12,4 +12,4 @@ The repository includes the following files.
 * simdata1.RData: Simulated data 1
 * simdata2.RData: Simulated data 2
 * data-generation.R: Script for generating the two simulated datasets
-* example-Boltimore.R: Script for applying SCR to boltimore dataset (available from `spdep` package)
+* example-Boltimore.R: Script for applying SCR to Baltimore dataset (available from `spdep` package)
