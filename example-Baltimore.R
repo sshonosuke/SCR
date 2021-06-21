@@ -9,7 +9,7 @@ X <- as.matrix(cbind(baltimore$NROOM, baltimore$DWELL, baltimore$NBATH, baltimor
                      baltimore$FIREPL, baltimore$AC, baltimore$BMENT, baltimore$NSTOR,
                      baltimore$GAR, baltimore$AGE, baltimore$CITCOU, baltimore$LOTSZ, baltimore$SQFT))
 Sp <- as.matrix(cbind(baltimore$X, baltimore$Y))
-knn <- knn2nb(knearneigh(Sp, k=10))
+knn <- knn2nb(knearneigh(Sp, k=K))
 listw_10nn_dates <- nb2listw(knn)
 W <- as(as_dgRMatrix_listw(listw_10nn_dates), "CsparseMatrix")*K
 
