@@ -2,12 +2,12 @@
 ###  Functions for spatially clustered regression (SCR)  ###
 ###-----------------------------------------------------###
 ## This code implements the following two functions for SCR/SFCR
-# 'SCR': SCR/SFCR with fixed G and fixed lambda
-# 'SCR.select': tuning parameter (G and lambda) selection via information criteria
+# 'SCR': SCR/SFCR with fixed G 
+# 'SCR.select': tuning parameter (G) selection via BIC-type criteria
 
 ## packages
-library(glmnet)
 library(SparseM)
+library(MASS)
 
 
 ###  Spatially clustered regression (with LASSO)   ###
@@ -16,20 +16,20 @@ library(SparseM)
 # X: (n,p)-matrix of covariates (p: number of covariates)
 # W: (n,n)-matrix of spatial weight
 # Sp: (n,2)-matrix of location information 
-# lambda: tuning parameter for L1-reguralization (lambda=0 leads to standard regression) 
 # G: number of groups 
 # Phi: tuning parameter for spatial similarity 
-# offset: n-dimensional vector of offset term (applicable only to "poisson" case)
+# offset: n-dimensional vector of offset term (applicable only to "poisson" and "NB")
 # fuzzy: if True, SFCR is applied
 # maxitr: maximum number of iterations
-# family: distribution family ("gaussian" or "poisson")
+# family: distribution family ("gaussian", "poisson" or "NB)
 
 ## Output
-# Beta: (G,p)-matrix of group-wise regression coeffieicnts
-# Sig: G-dimensional vector of group-wise standard deviations (only for "gaussian" case)
+# Beta: (G,p)-matrix of group-wise regression coefficients
+# Sig: G-dimensional vector of group-wise standard deviations (only for "gaussian" and "NB")
 # group: n-dimensional vector of group assignment 
-# sBeta: (n,p)-matrix of location-wise regression coeffieicnts
-# sSig: n-dimensional vector of location-wise standard deviations (only for "gaussian" case)
+# sBeta: (n,p)-matrix of location-wise regression coefficients
+# sSig: n-dimensional vector of location-wise standard deviations (only for "gaussian")
+# s: n-dimensional vector of location-wise standard deviations (only for "gaussian")
 # ML: maximum log-likelihood
 # itr: number of iterations 
 
@@ -39,7 +39,7 @@ library(SparseM)
 
 
 ## Main function 
-SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=100, family="gaussian"){
+SCR <- function(Y, X, W, Sp, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=100, delta=1, family="gaussian"){
   ## Preparations
   ep <- 10^(-5)      # convergence criterion 
   X <- as.matrix(X)
@@ -48,6 +48,7 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
   XX <- as.matrix( cbind(1,X) )
   W <- as(W, "sparseMatrix")
   if(is.null(offset)){ offset <- rep(0, n) }
+  nmax <- function(x){ max(na.omit(x)) }   # new max function 
   
   ## Initial values
   Ind <- kmeans(Sp, G)$cluster
@@ -55,6 +56,7 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
   Beta <- matrix(0, p, G)
   dimnames(Beta)[[2]] <- paste0("G=",1:G)
   Sig <- rep(1, G)    # not needed under non-Gaussian case
+  Nu <- rep(1, G) 
   
   ## iterative algorithm 
   val <- 0
@@ -76,11 +78,7 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
         if(length(Ind[Ind==g])>p+1){
           # gaussian
           if(family=="gaussian"){
-            if(lambda==0){
-              fit <- lm(Y[Ind==g]~X[Ind==g,])
-            }else{
-              fit <- glmnet(x=X[Ind==g,], y=Y[Ind==g], family="gaussian", lambda=lambda)
-            }
+            fit <- lm(Y[Ind==g]~X[Ind==g,])
             Beta[,g] <- as.vector( coef(fit) )
             resid <- Y-as.vector(XX%*%Beta[,g])
             Sig[g] <- sqrt(mean(resid[Ind==g]^2))
@@ -88,8 +86,20 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
           }
           # poisson
           if(family=="poisson"){
-            fit <- glmnet(x=X[Ind==g,], y=Y[Ind==g], offset=offset[Ind==g], family="poisson", lambda=lambda)
+            x <- X[Ind==g,]
+            y <- Y[Ind==g]
+            off <- offset[Ind==g]
+            fit <- glm(y~x, offset=off, family="poisson")
             Beta[,g] <- as.vector( coef(fit) )
+          }
+          # NB
+          if(family=="NB"){
+            x <- X[Ind==g,]
+            y <- Y[Ind==g]
+            off <- offset[Ind==g]
+            fit <- glm.nb(y~x+offset(off))
+            Beta[,g] <- as.vector( coef( fit ) )
+            Nu[g] <- fit$theta
           }
         }
       }
@@ -107,7 +117,7 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
         PP <- exp(log.dens-log.denom)     # weight
         for(g in 1:G){ 
           if(sum(PP[,g])>0.1){
-            fit <- glmnet(x=X, y=Y, lambda=lambda, weights=PP[,g], family="gaussian")
+            fit <- lm(Y~X, weights=PP[,g])
             Beta[,g] <- as.vector( coef(fit) )
             resid <- Y-as.vector(XX%*%Beta[,g])
             Sig[g] <- sqrt( sum(PP[,g]*resid^2)/sum(PP[,g]) )
@@ -125,8 +135,23 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
         PP <- exp(log.dens-log.denom)     # weight
         for(g in 1:G){
           if(sum(PP[,g])>0.1){
-            fit <- glmnet(x=X, y=Y, offset=offset, lambda=lambda, weights=PP[,g], family="poisson")
+            fit <- glm(Y~X, offset=offset, weights=PP[,g], family="poisson")
             Beta[,g] <- as.vector( coef(fit) )
+          }
+        }
+      }
+      # NB
+      if(family=="NB"){
+        Mu <- exp(offset + XX%*%Beta)    # (n,G)-matrix
+        log.dens <- dnbinom(Y, size=Nu, prob=Nu/(Nu+Mu), log=T) + Phi*Pen 
+        mval <- apply(log.dens, 1, max)
+        log.denom <- mval + log(apply(exp(log.dens-mval), 1, sum))
+        PP <- exp(log.dens-log.denom)     # weight
+        for(g in 1:G){
+          if(sum(PP[,g])>0.1){
+            fit <- glm.nb(Y~X+offset(offset), weights=PP[,g])
+            Beta[,g] <- as.vector( coef(fit) )
+            Nu[g] <- fit$theta
           }
         }
       }
@@ -134,7 +159,6 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
     
     ## Grouping (clustered case)
     if(fuzzy==F){
-      # Gaussian
       if(family=="gaussian"){
         Mu <- XX%*%Beta      # (n,G)-matrix
         ESig <- t(matrix(rep(Sig,n), G, n))    # (n,G)-matrix
@@ -144,24 +168,33 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
         Mu <- exp(offset + XX%*%Beta) 
         Q <- dpois(Y, Mu, log=T)  + Phi*Pen    # penalized likelihood
       }
+      if(family=="NB"){ 
+        Mu <- exp(offset + XX%*%Beta) 
+        Q <- dnbinom(Y, size=Nu, prob=Nu/(Nu+Mu), log=T)  + Phi*Pen    # penalized likelihood
+      }
       Ind <- apply(Q, 1, which.max)
     }
     
     ## Grouping (fuzzy case)
     if(fuzzy==T){
-      # Gaussian
       if(family=="gaussian"){
         Mu <- XX%*%Beta      # (n,G)-matrix
         ESig <- t(matrix(rep(Sig,n), G, n))    # (n,G)-matrix
-        Q <- dnorm(Y, Mu, ESig, log=T) + Phi*Pen   # penalized likelihood
+        Q <- delta*(dnorm(Y, Mu, ESig, log=T) + Phi*Pen)   # penalized likelihood
         mval <- apply(Q, 1, max)
         log.denom <- mval + log(apply(exp(Q-mval), 1, sum))
         PP <- exp(Q-log.denom)
       }
-      # Poisson
       if(family=="poisson"){ 
         Mu <- exp(offset + XX%*%Beta)    # (n,G)-matrix
-        Q <- dpois(Y, Mu, log=T)  + Phi*Pen   # penalized likelihood
+        Q <- delta*(dpois(Y, Mu, log=T)  + Phi*Pen)   # penalized likelihood
+        mval <- apply(Q, 1, max)
+        log.denom <- mval + log(apply(exp(Q-mval), 1, sum))
+        PP <- exp(Q-log.denom)
+      }
+      if(family=="NB"){ 
+        Mu <- exp(offset + XX%*%Beta)    # (n,G)-matrix
+        Q <- delta*(dnbinom(Y, size=Nu, prob=Nu/(Nu+Mu), log=T) + Phi*Pen)   # penalized likelihood
         mval <- apply(Q, 1, max)
         log.denom <- mval + log(apply(exp(Q-mval), 1, sum))
         PP <- exp(Q-log.denom)
@@ -170,7 +203,7 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
     }
     
     ## Value of objective function
-    val <- sum( apply(Q, 1, max) ) + lambda*sum(abs(Beta))
+    val <- sum( apply(Q, 1, nmax) ) 
     dd <- abs(cval-val)/abs(val)
     mval <- max(mval, cval)
     if( dd<ep | abs(mval-val)<ep ){ break }
@@ -180,6 +213,7 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
   if(fuzzy==F){  sBeta <- t(Beta[,Ind]) }
   if(fuzzy==T){  sBeta <- PP%*%t(Beta) }
   sSig <- Sig[Ind]     # location-wise error variance
+  
 
   ## maximum likelihood 
   if(family=="gaussian"){
@@ -190,9 +224,14 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
     hmu <- exp(offset + apply(XX*sBeta, 1, sum))
     ML <- sum( dpois(Y, hmu, log=T) ) 
   }
+  if(family=="NB"){
+    sNu <- Nu[Ind]
+    hmu <- exp(offset + apply(XX*sBeta, 1, sum))
+    ML <- sum( dnbinom(Y, size=sNu, prob=sNu/(sNu+hmu), log=T) ) 
+  }
   
   ## Results
-  result <- list(Beta=Beta, Sig=Sig, group=Ind, sBeta=sBeta, sSig=sSig, ML=ML, itr=k)
+  result <- list(Beta=Beta, Sig=Sig, Nu=Nu, group=Ind, sBeta=sBeta, sSig=sSig, ML=ML, itr=k)
   return(result)
 }
 
@@ -207,64 +246,40 @@ SCR <- function(Y, X, W, Sp, lambda=0, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=
 
 ###  Selection of tuning parameters  ###
 ## Imput
-# most of imputs are the same as 'SCR' 
+# most of inputs are the same as 'SCR' 
 # G.set: vector of candidates for G
-# Lam.set: vector of candidates for lambda
 # print: if True, interim progress is reported 
 
 ## Output
-# AIC: AIC-type criteria
 # BIC: BIC-type criteria
 # select: selection results 
 
 ## Main function 
-SCR.select <- function(Y, X, W, Sp, G.set=NULL, Lam.set=NULL, Phi=1, offset=NULL, maxitr=50, print=T, family="gaussian"){
+SCR.select <- function(Y, X, W, Sp, G.set=NULL, Phi=1, offset=NULL, maxitr=50, print=T, family="gaussian"){
   ## Preparations
   if(is.null(G.set)){ G.set <- seq(10, 40, by=5) }
-  if(is.null(Lam.set)){ Lam.set <- 0 }
   X <- as.matrix(X)
   n <- dim(X)[1]
   p <- dim(X)[2]+1
   L <- length(G.set)
-  M <- length(Lam.set)
   
   ## computing information criteria
-  AIC <- matrix(NA, M, L)
-  BIC <- matrix(NA, M, L)
-  for(m in 1:M){
-    for(l in 1:L){
-      fit <- SCR(Y, X, W, Sp, offset=offset, G=G.set[l], lambda=Lam.set[m], Phi=Phi, maxitr=maxitr, family=family)
-      pp <- sum(fit$Beta!=0) 
-      if(family=="gaussian"){ pp <- pp + G.set[l] }
-      AIC[m, l] <- -2*fit$ML + 2*pp
-      BIC[m, l] <- -2*fit$ML + log(n)*pp
-      if(print){ print( paste0("G=",G.set[l], ", Lam=", Lam.set[m], ", iteration=", fit$itr) ) }
-    }
+  BIC <- c()
+  for(l in 1:L){
+    fit <- SCR(Y, X, W, Sp, offset=offset, G=G.set[l], Phi=Phi, maxitr=maxitr, family=family)
+    pp <- length(fit$Beta) 
+    if(family=="gaussian"| family=="NB"){ pp <- pp + G.set[l] }
+    BIC[l] <- -2*fit$ML + log(n)*pp
+    if(print){ print( paste0("G=",G.set[l], ", iteration=", fit$itr) ) }
   }
-  dimnames(AIC)[[1]] <- dimnames(BIC)[[1]] <- paste0("lambda=", Lam.set)
-  dimnames(AIC)[[2]] <- dimnames(BIC)[[2]] <- paste0("G=", G.set)
+  names(BIC) <- paste0("G=", G.set)
   
   ## selection
-  if(M>1){
-    num <- which.min(AIC)
-    G.AIC <- G.set[ceiling(num/M)]
-    Lam.AIC <- Lam.set[num-floor(num/M)*M]
-    num <- which.min(BIC)
-    G.BIC <- G.set[ceiling(num/M)]
-    Lam.BIC <- Lam.set[num-floor(num/M)*M]
-    select <- c(G.AIC, Lam.AIC, G.BIC, Lam.BIC)
-    names(select) <- c("AIC.G", "AIC.Lam", "BIC.G", "BIC.Lam")
-  }
-  if(M==1){
-    G.AIC <- G.set[which.min(AIC)]
-    G.BIC <- G.set[which.min(BIC)]
-    select <- c(G.AIC, G.BIC)
-    names(select) <- c("AIC.G", "BIC.G")
-  }
-  
+  hG <- G.set[which.min(BIC)]
+
   ## result
-  IC <- list(AIC=AIC, BIC=BIC, select=select)
-  return(IC)
+  Result <- list(BIC=BIC, G=hG)
+  return(Result)
 }
 
 

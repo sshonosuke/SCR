@@ -5,7 +5,7 @@ set.seed(1)
 
 library(MASS)
 scenario <- 2   # 1 (clustered case) or 2 (smoothed case)
-phi <- 0.2    # range parameter for covariates
+phi <- 0.6    # range parameter for covariates
 n <- 1000   # sample size
 
 

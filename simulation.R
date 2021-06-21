@@ -1,17 +1,18 @@
 ###-----------------------------------------------------###
 ###     one-shot simulation experiment (fitting)        ###
 ###-----------------------------------------------------###
+rm(list=ls())
 set.seed(1)
+
 
 library(spgwr)   
 library(glmnet) 
 library(ape)    
-library(MASS)
 source("SCR-function.R")
 
 
 ## load simulated dataset
-scenario <- 2    # 1 (clustered case) or 2 (smoothed case)
+scenario <- 1    # 1 (clustered case) or 2 (smoothed case)
 load(paste0("simdata", scenario, ".RData"))
 
 
@@ -23,7 +24,7 @@ est0 <- cbind(fit$SDF$`(Intercept)`, fit$SDF$`Xx1`, fit$SDF$`Xx2`)
 ## SCR: spatially clustered regression
 G.set <- seq(5, 30, by=5)
 IC <- SCR.select(Y, X, W, Sp, G.set=G.set, Phi=1, print=F, family="gaussian")
-hG <- IC$select[2]     # optimal number of group via BIC
+hG <- IC$G    # optimal number of group via BIC
 
 # SCR
 fit1 <- SCR(Y, X, W, Sp, G=hG, Phi=1)    
