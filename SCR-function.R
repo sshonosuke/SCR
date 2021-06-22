@@ -11,7 +11,7 @@ library(MASS)
 
 
 ###  Spatially clustered regression (with LASSO)   ###
-## IMPUT
+## Input
 # Y: n-dimensional response vector 
 # X: (n,p)-matrix of covariates (p: number of covariates)
 # W: (n,n)-matrix of spatial weight
@@ -51,7 +51,14 @@ SCR <- function(Y, X, W, Sp, G=5, Phi=1, offset=NULL, fuzzy=F, maxitr=100, delta
   nmax <- function(x){ max(na.omit(x)) }   # new max function 
   
   ## Initial values
-  Ind <- kmeans(Sp, G)$cluster
+  M <- 20  # the number of initial values of k-means
+  WSS <- c()
+  CL <- list()
+  for(k in 1:M){
+    CL[[k]] <- kmeans(Sp, G)
+    WSS[k] <- CL[[k]]$tot.withinss
+  }
+  Ind <- CL[[which.min(WSS)]]$cluster
   Pen <- rep(0, G)
   Beta <- matrix(0, p, G)
   dimnames(Beta)[[2]] <- paste0("G=",1:G)

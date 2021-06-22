@@ -3,7 +3,7 @@ rm(list=ls())
 
 ## dataset
 library(spdep)
-K <- 10    # number of nearest neighbour
+K <- 5    # number of nearest neighbour
 Y <- as.vector(baltimore$PRICE)
 X <- as.matrix(cbind(baltimore$NROOM, baltimore$DWELL, baltimore$NBATH, baltimore$PATIO, 
                      baltimore$FIREPL, baltimore$AC, baltimore$BMENT, baltimore$NSTOR,
@@ -16,7 +16,8 @@ W <- as(as_dgRMatrix_listw(listw_10nn_dates), "CsparseMatrix")*K
 
 ## fitting
 source("SCR-function.R")
-select <- SCR.select(Y, X, W, Sp, G.set=3:10)   # selection of the number of clusters
+select <- SCR.select(Y, X, W, Sp, G.set=2:10)   # selection of the number of clusters
+select$G
 
 fit <- SCR(Y, X, W, Sp, G=select$G)  # estimation with the selected G
 
