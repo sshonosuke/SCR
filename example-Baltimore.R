@@ -3,6 +3,7 @@ rm(list=ls())
 
 ## dataset
 library(spdep)
+library(spatialreg)
 K <- 5    # number of nearest neighbour
 Y <- as.vector(baltimore$PRICE)
 X <- as.matrix(cbind(baltimore$NROOM, baltimore$DWELL, baltimore$NBATH, baltimore$PATIO, 
